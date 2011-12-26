@@ -34,6 +34,15 @@ import pickle, json, yaml
 # for lua bot like functionality
 import subprocess
 
+# configuration options
+DO_LUA = True
+DO_REGEX = True
+DO_IMO = True
+DO_OMP = True
+DO_MTG = True
+DO_SWOGI = False
+DO_LOGLINK = True
+
 # A function to strip non alpha-numerics from the end of a string, keep only
 # max_length characters from the end (after stripping), and make everything
 # lower case.  This will be used on both the magic dict and incoming messages
@@ -169,7 +178,7 @@ class LogBot(irc.IRCClient):
         self.logger.log("<%s> %s" % (user, msg))
 
         # This bot is also lua_bot
-        if msg.startswith("lua>"):
+        if DO_LUA and msg.startswith("lua>"):
             lua_file = open("lua_in.lua", "w")
             lua_file.write(msg[4:])
             lua_file.close()
@@ -191,37 +200,40 @@ class LogBot(irc.IRCClient):
             return
 
         # Regex find and replace
-        tokens = msg.split("/")
-        if len(tokens) == 3 or len(tokens) == 4:
-            who = tokens[0]
-            if who == "s":
-                who = user
-            prev_msg = self.user_to_last_msg.get(who)
-            if prev_msg:
-                new_msg = re.sub(tokens[1], tokens[2], prev_msg)
-                self.say(channel, "%s meant to say: %s" % (who, new_msg))
-                self.user_to_last_msg[who] = new_msg
-        else:
-            self.user_to_last_msg[user] = msg
+        if DO_REGEX:
+            tokens = msg.split("/")
+            if len(tokens) == 3 or len(tokens) == 4:
+                who = tokens[0]
+                if who == "s":
+                    who = user
+                prev_msg = self.user_to_last_msg.get(who)
+                if prev_msg:
+                    new_msg = re.sub(tokens[1], tokens[2], prev_msg)
+                    self.say(channel, "%s meant to say: %s" % (who, new_msg))
+                    self.user_to_last_msg[who] = new_msg
+            else:
+                self.user_to_last_msg[user] = msg
 
         # imo.im
-        if msg.endswith("imo"):
+        if DO_IMO and msg.endswith("imo"):
             self.say(channel, ".im")
 
         # Respond to ompldr links other than this one with this one.
-        if len(re.findall(OMP_REGEX,msg)) > len(re.findall(OMP_LINK_REGEX,msg)):
+        if DO_OMP and (len(re.findall(OMP_REGEX,msg)) >
+                len(re.findall(OMP_LINK_REGEX,msg))):
             self.say(channel, "%s: %s" % (user, OMP_LINK))
 
         # If a message ends with a magic card name, return url to picture
-        stripped_chars = charstrip(msg, max_card_name_length)
-        for i in range(len(stripped_chars) - 2): # minimum of 3-character match
-            if stripped_chars[i:] in mtg_links:
-                self.say(channel,
-                         "%s: %s" % (user, mtg_links.get(stripped_chars[i:])))
-                break # so we only say the longest one
+        if DO_MTG:
+            stripped_chars = charstrip(msg, max_card_name_length)
+            for i in range(len(stripped_chars) - 2): # minimum of 3-character match
+                if stripped_chars[i:] in mtg_links:
+                    self.say(channel,
+                             "%s: %s" % (user, mtg_links.get(stripped_chars[i:])))
+                    break # so we only say the longest one
 
         # Otherwise check to see if it is a message directed at me
-        if msg.startswith(self.nicknames):
+        if DO_LOGLINK and msg.startswith(self.nicknames):
             loglink = self.logger.loglink()
             my_msg = "%s: Logs can be found at % s" % (user, loglink)
             self.say(channel, my_msg)
