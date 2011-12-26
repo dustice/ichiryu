@@ -281,8 +281,9 @@ class LogBot(irc.IRCClient):
                         self.say(channel, "unknown card with ID %s" % id)
             elif msg.startswith("@"):
                 for id in ids:
-                    self.say(channel,
-                        "http://www.sword-girls.co.kr/Img/Card/%sL.jpg" % id)
+                    if id in swogi["id_to_card"]:
+                        self.say(channel,
+                            "http://www.sword-girls.co.kr/Img/Card/%sL.jpg" % id)
 
         # Otherwise check to see if it is a message directed at me
         if DO_LOGLINK and msg.startswith(self.nicknames):
