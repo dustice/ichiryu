@@ -173,10 +173,9 @@ class LogBot(irc.IRCClient):
             lua_file = open("lua_in.lua", "w")
             lua_file.write(msg[4:])
             lua_file.close()
-            lua_guy = subprocess.Popen(["./sandbox.sh"], shell=True,
+            lua_guy = subprocess.Popen(["./sandbox.sh"],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            response = lua_guy.stdout.read(MAX_LUA_OUTPUT*3)
-            err_output = lua_guy.stderr.read(MAX_LUA_OUTPUT*3)
+            response, err_output = lua_guy.communicate()
             if err_output:
                 if err_output.startswith("./sandbox.sh: line 3:"):
                     response = "Your code exceeded set CPU limits"
@@ -279,8 +278,8 @@ class LogBot(irc.IRCClient):
         kicked = params[1]
         message = params[-1]
         self.logger.log(
-            "%s (WTB WORKING WHOIS IN TWISTED) was kicked by %s (%s) for
-            reason [%s]" % (kicked, kicker, prefix, message))
+            "%s (WTB WORKING WHOIS IN TWISTED) was kicked by %s (%s) for"
+            "reason [%s]" % (kicked, kicker, prefix, message))
 
     # For fun, override the method that determines how a nickname is changed on
     # collisions. The default method appends an underscore.
