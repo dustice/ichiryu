@@ -68,26 +68,39 @@ OMP_LINK_REGEX = re.compile("http://omploa(oade)|der\\.org/vMmhmZA($|[^a-zA-Z0-9
 MAX_LUA_OUTPUT = 322
 
 # MTG card dict.  if there's a pickled copy, load that instead and use it
-try:
-    mtg = pickle.load(open('mtg.pickle'))
-    max_card_name_length = mtg['max card name length']
-    mtg_links = mtg['mtg links']
-except:
-    mtg_json = open("mtg_cards.json")
-    big_mtg_dict = json.load(mtg_json)
-    max_card_name_length = 0
-    mtg_links = {}
-    for mtg_card in big_mtg_dict:
-        card_name = charstrip(str(mtg_card['name']))
-        card_url = str(mtg_card['imgUrl'])
-        # only keep the card with the largest url number
-        if (card_name not in mtg_links or
-            (urlnumber(card_url) > urlnumber(mtg_links.get(card_name)))):
-            mtg_links[card_name] = card_url
-            if len(card_name) > max_card_name_length:
-                max_card_name_length = len(card_name)
-    mtg = {'max card name length':max_card_name_length,'mtg links':mtg_links}
-    pickle.dump(mtg,open('mtg.pickle','w'))
+if DO_MTG:
+    try:
+        mtg = pickle.load(open('mtg.pickle'))
+        max_card_name_length = mtg['max card name length']
+        mtg_links = mtg['mtg links']
+    except:
+        mtg_json = open("mtg_cards.json")
+        big_mtg_dict = json.load(mtg_json)
+        max_card_name_length = 0
+        mtg_links = {}
+        for mtg_card in big_mtg_dict:
+            card_name = charstrip(str(mtg_card['name']))
+            card_url = str(mtg_card['imgUrl'])
+            # only keep the card with the largest url number
+            if (card_name not in mtg_links or
+                (urlnumber(card_url) > urlnumber(mtg_links.get(card_name)))):
+                mtg_links[card_name] = card_url
+                if len(card_name) > max_card_name_length:
+                    max_card_name_length = len(card_name)
+        mtg = {'max card name length':max_card_name_length,'mtg links':mtg_links}
+        pickle.dump(mtg,open('mtg.pickle','w'))
+
+if DO_SWOGI:
+    try:
+        file = open("swogi.json")
+        swogi = json.load(file)
+        new_name_to_ids = {}
+        for k,v in swogi["name_to_ids"].iteritems():
+            new_name_to_ids[k.replace(" ","").lower()] = v
+        swogi["name_to_ids"] = new_name_to_ids
+        file.close()
+    except:
+        pass
 
 class MessageLogger:
     """
@@ -232,6 +245,45 @@ class LogBot(irc.IRCClient):
                              "%s: %s" % (user, mtg_links.get(stripped_chars[i:])))
                     break # so we only say the longest one
 
+        if DO_SWOGI and len(msg) > 1:
+            swogi_msg = msg[1:].replace(" ","").lower()
+            by_name = False
+            if swogi_msg in swogi["name_to_ids"]:
+                ids = swogi["name_to_ids"][swogi_msg]
+                by_name = True
+            else:
+                ids = [swogi_msg]
+            if msg.startswith("!"):
+                for id in ids:
+                    if id in swogi["id_to_card"]:
+                        card = swogi["id_to_card"][id]
+                        if card["type"] == "Character":
+                            to_say = ("%s - %s Character - %s Life - %s point "
+                                "%s, %s - %s" % (card["name"], card["faction"],
+                                card["life"], card["points"], card["rarity"],
+                                card["episode"], card["ability"]))
+                        elif card["type"] == "Follower":
+                            to_say = ("%s - %s Follower - Size %s, %s/%s/%s - "
+                                "%s point %s, %s - %s" % (card["name"],
+                                card["faction"], card["size"], card["attack"],
+                                card["defense"], card["stamina"], card["points"],
+                                card["rarity"], card["episode"], card["ability"]))
+                        elif card["type"] == "Spell":
+                            to_say = ("%s - %s Spell - Size %s - "
+                                "%s point %s, %s - %s" % (card["name"],
+                                    card["faction"], card["size"], card["points"],
+                                card["rarity"], card["episode"], card["ability"]))
+                        else:
+                            to_say = "card with unknown type %s and ID %s" % (
+                                    card["type"], id)
+                        self.say(channel, to_say)
+                    elif by_name:
+                        self.say(channel, "unknown card with ID %s" % id)
+            elif msg.startswith("@"):
+                for id in ids:
+                    self.say(channel,
+                        "http://www.sword-girls.co.kr/Img/Card/%sL.jpg" % id)
+
         # Otherwise check to see if it is a message directed at me
         if DO_LOGLINK and msg.startswith(self.nicknames):
             loglink = self.logger.loglink()
@@ -239,6 +291,7 @@ class LogBot(irc.IRCClient):
             self.say(channel, my_msg)
 
     def say(self, channel, msg):
+        msg = str(msg)
         self.msg(channel, msg)
         self.logger.log("<%s> %s" % (self.nickname, msg))
 
