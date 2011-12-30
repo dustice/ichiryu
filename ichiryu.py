@@ -293,7 +293,9 @@ class LogBot(irc.IRCClient):
 
     def say(self, channel, msg):
         msg = str(msg)
-        self.msg(channel, msg)
+        while len(msg):
+            self.msg(channel, msg[:450])
+            msg = msg[450:]
         self.logger.log("<%s> %s" % (self.nickname, msg))
 
     def action(self, user, channel, msg):
