@@ -29,7 +29,7 @@ from twisted.python import log
 # system imports
 import time, sys
 import re
-import pickle, json, yaml
+import json, yaml
 
 # for lua bot like functionality
 import subprocess
@@ -67,28 +67,22 @@ OMP_LINK = "http://omploader.org/vMmhmZA"
 OMP_LINK_REGEX = re.compile("http://omploa(oade)|der\\.org/vMmhmZA($|[^a-zA-Z0-9])")
 MAX_LUA_OUTPUT = 322
 
-# MTG card dict.  if there's a pickled copy, load that instead and use it
+# MTG card dict.
 if DO_MTG:
-    try:
-        mtg = pickle.load(open('mtg.pickle'))
-        max_card_name_length = mtg['max card name length']
-        mtg_links = mtg['mtg links']
-    except:
-        mtg_json = open("mtg_cards.json")
-        big_mtg_dict = json.load(mtg_json)
-        max_card_name_length = 0
-        mtg_links = {}
-        for mtg_card in big_mtg_dict:
-            card_name = charstrip(str(mtg_card['name']))
-            card_url = str(mtg_card['imgUrl'])
-            # only keep the card with the largest url number
-            if (card_name not in mtg_links or
-                (urlnumber(card_url) > urlnumber(mtg_links.get(card_name)))):
-                mtg_links[card_name] = card_url
-                if len(card_name) > max_card_name_length:
-                    max_card_name_length = len(card_name)
-        mtg = {'max card name length':max_card_name_length,'mtg links':mtg_links}
-        pickle.dump(mtg,open('mtg.pickle','w'))
+    mtg_json = open("mtg_cards.json")
+    big_mtg_dict = json.load(mtg_json)
+    max_card_name_length = 0
+    mtg_links = {}
+    for mtg_card in big_mtg_dict:
+        card_name = charstrip(str(mtg_card['name']))
+        card_url = str(mtg_card['imgUrl'])
+        # only keep the card with the largest url number
+        if (card_name not in mtg_links or
+            (urlnumber(card_url) > urlnumber(mtg_links.get(card_name)))):
+            mtg_links[card_name] = card_url
+            if len(card_name) > max_card_name_length:
+                max_card_name_length = len(card_name)
+    mtg = {'max card name length':max_card_name_length,'mtg links':mtg_links}
 
 if DO_SWOGI:
     try:
@@ -178,13 +172,18 @@ class LogBot(irc.IRCClient):
         """This will get called when the bot receives a message."""
         user = user.split('!', 1)[0]
 
+        def say(msg):
+            self.say(channel,msg)
+
         # Check to see if they're sending me a private message
         if channel == self.nickname:
-            msg = "It isn't nice to whisper!  Play nice with the group."
-            self.msg(user, msg)
-            return
-
-        if channel != self.factory.channel:
+            def say(msg):
+                msg = str(msg)
+                while len(msg):
+                    self.msg(user, msg[:450])
+                    msg = msg[450:]
+                self.logger.log("responded to PM from %s"%user)
+        elif channel != self.factory.channel:
             return
 
         # Log messages in the channel
@@ -208,7 +207,7 @@ class LogBot(irc.IRCClient):
             if len(response) > MAX_LUA_OUTPUT:
                 response = (response[:MAX_LUA_OUTPUT-22] +
                         "... (result truncated)")
-            self.say(channel, "%s: %s" % (user, response))
+            say("%s: %s" % (user, response))
             lua_guy.kill()
             return
 
@@ -222,26 +221,26 @@ class LogBot(irc.IRCClient):
                 prev_msg = self.user_to_last_msg.get(who)
                 if prev_msg:
                     new_msg = re.sub(tokens[1], tokens[2], prev_msg)
-                    self.say(channel, "%s meant to say: %s" % (who, new_msg))
+                    say("%s meant to say: %s" % (who, new_msg))
                     self.user_to_last_msg[who] = new_msg
             else:
                 self.user_to_last_msg[user] = msg
 
         # imo.im
         if DO_IMO and msg.endswith("imo"):
-            self.say(channel, ".im")
+            say(".im")
 
         # Respond to ompldr links other than this one with this one.
         if DO_OMP and (len(re.findall(OMP_REGEX,msg)) >
                 len(re.findall(OMP_LINK_REGEX,msg))):
-            self.say(channel, "%s: %s" % (user, OMP_LINK))
+            say("%s: %s" % (user, OMP_LINK))
 
         # If a message ends with a magic card name, return url to picture
         if DO_MTG:
             stripped_chars = charstrip(msg, max_card_name_length)
             for i in range(len(stripped_chars) - 2): # minimum of 3-character match
                 if stripped_chars[i:] in mtg_links:
-                    self.say(channel,
+                    say(
                              "%s: %s" % (user, mtg_links.get(stripped_chars[i:])))
                     break # so we only say the longest one
 
@@ -258,45 +257,48 @@ class LogBot(irc.IRCClient):
                     if id in swogi["id_to_card"]:
                         card = swogi["id_to_card"][id]
                         if card["type"] == "Character":
-                            to_say = ("%s - %s Character - %s Life - %s point "
+                            to_say = ("%s - %s Character - %s Life - Limit %s %spt "
                                 "%s, %s - %s" % (card["name"], card["faction"],
-                                card["life"], card["points"], card["rarity"],
+                                card["life"], card["limit"],
+                                card["points"], card["rarity"],
                                 card["episode"], card["ability"]))
                         elif card["type"] == "Follower":
                             to_say = ("%s - %s Follower - Size %s, %s/%s/%s - "
-                                "%s point %s, %s - %s" % (card["name"],
+                                "Limit %s %spt %s, %s - %s" % (card["name"],
                                 card["faction"], card["size"], card["attack"],
-                                card["defense"], card["stamina"], card["points"],
+                                card["defense"], card["stamina"], card["limit"],
+                                card["points"],
                                 card["rarity"], card["episode"], card["ability"]))
                         elif card["type"] == "Spell":
-                            to_say = ("%s - %s Spell - Size %s - "
-                                "%s point %s, %s - %s" % (card["name"],
-                                    card["faction"], card["size"], card["points"],
+                            to_say = ("%s - %s Spell - Size %s - Limit %s "
+                                "%spt %s, %s - %s" % (card["name"],
+                                    card["faction"], card["size"], card["limit"],
+                                    card["points"],
                                 card["rarity"], card["episode"], card["ability"]))
                         else:
                             to_say = "card with unknown type %s and ID %s" % (
                                     card["type"], id)
-                        self.say(channel, to_say)
+                        say(to_say)
                     elif by_name:
-                        self.say(channel, "unknown card with ID %s" % id)
+                        say("unknown card with ID %s" % id)
             elif msg.startswith("@"):
                 for id in ids:
                     if id in swogi["id_to_card"]:
-                        self.say(channel,
+                        say(
                             "http://www.sword-girls.co.kr/Img/Card/%sL.jpg" % id)
 
         # Otherwise check to see if it is a message directed at me
         if DO_LOGLINK and msg.startswith(self.nicknames):
             loglink = self.logger.loglink()
             my_msg = "%s: Logs can be found at % s" % (user, loglink)
-            self.say(channel, my_msg)
+            say(my_msg)
 
     def say(self, channel, msg):
         msg = str(msg)
+        self.logger.log("<%s> %s" % (self.nickname, msg))
         while len(msg):
             self.msg(channel, msg[:450])
             msg = msg[450:]
-        self.logger.log("<%s> %s" % (self.nickname, msg))
 
     def action(self, user, channel, msg):
         """This will get called when the bot sees someone do an action."""
