@@ -1,8 +1,16 @@
 {
-  "nickname"  : "IchiryuBot",
-  "channel"   : "#wonted",
-  "nicknames" : ["IchiryuBot", "Ichiryu", "ichiryu", "ichiryubot"],
-  "logroot"   : "/home/dustin/ichiryu/wonted-logs/",
+  "nickname"  : "swogi",
+  "channel"   : "#SwordGirls",
+  "nicknames" : [],
+  "logroot"   : "/home/sharpobject/repos/ichiryu/swogi-logs/",
   "server"    : "irc.rizon.net",
-  "port"      : 6667
+  "port"      : 6667,
+  "DO_LUA"    : false,
+  "DO_REGEX"  : false,
+  "DO_IMO"    : false,
+  "DO_OMP"    : false,
+  "DO_MTG"    : false,
+  "DO_SWOGI"  : true,
+  "DO_LOGLINK": false,
+  "DO_PM"     : true
 }

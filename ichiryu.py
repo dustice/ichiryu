@@ -29,19 +29,16 @@ from twisted.python import log
 # system imports
 import time, sys
 import re
-import json, yaml
+import json
 
 # for lua bot like functionality
 import subprocess
 
-# configuration options
-DO_LUA = True
-DO_REGEX = True
-DO_IMO = True
-DO_OMP = True
-DO_MTG = True
-DO_SWOGI = False
-DO_LOGLINK = True
+# Load Configuration File
+config = json.load(open('config.json'))
+for k,v in config.iteritems():
+    if isinstance(v,basestring):
+        config[k] = str(v)
 
 # A function to strip non alpha-numerics from the end of a string, keep only
 # max_length characters from the end (after stripping), and make everything
@@ -68,7 +65,7 @@ OMP_LINK_REGEX = re.compile("http://omploa(oade)|der\\.org/vMmhmZA($|[^a-zA-Z0-9
 MAX_LUA_OUTPUT = 322
 
 # MTG card dict.
-if DO_MTG:
+if config["DO_MTG"]:
     mtg_json = open("mtg_cards.json")
     big_mtg_dict = json.load(mtg_json)
     max_card_name_length = 0
@@ -84,7 +81,7 @@ if DO_MTG:
                 max_card_name_length = len(card_name)
     mtg = {'max card name length':max_card_name_length,'mtg links':mtg_links}
 
-if DO_SWOGI:
+if config["DO_SWOGI"]:
     try:
         file = open("swogi.json")
         swogi = json.load(file)
@@ -137,10 +134,16 @@ class MessageLogger:
 class LogBot(irc.IRCClient):
     """A logging IRC bot."""
 
-    # Load Configuration File
-    config = yaml.load(open('config.json'))
     nickname = config["nickname"]
     nicknames = tuple(config["nicknames"])
+    DO_LUA = config["DO_LUA"]
+    DO_REGEX = config["DO_REGEX"]
+    DO_IMO = config["DO_IMO"]
+    DO_OMP = config["DO_OMP"]
+    DO_MTG = config["DO_MTG"]
+    DO_SWOGI = config["DO_SWOGI"]
+    DO_LOGLINK = config["DO_LOGLINK"]
+    DO_PM = config["DO_PM"]
     user_to_last_msg = {}
 
     def connectionMade(self):
@@ -152,9 +155,10 @@ class LogBot(irc.IRCClient):
 
     def connectionLost(self, reason):
         irc.IRCClient.connectionLost(self, reason)
-        self.logger.log("[disconnected at %s]" %
+        if hasattr(self, "logger"):
+            self.logger.log("[disconnected at %s]" %
                         time.asctime(time.localtime(time.time())))
-        self.logger.close()
+            self.logger.close()
 
 
     # callbacks for events
@@ -176,7 +180,7 @@ class LogBot(irc.IRCClient):
             self.say(channel,msg)
 
         # Check to see if they're sending me a private message
-        if channel == self.nickname:
+        if channel == self.nickname and self.DO_PM:
             def say(msg):
                 msg = str(msg)
                 while len(msg):
@@ -190,7 +194,7 @@ class LogBot(irc.IRCClient):
         self.logger.log("<%s> %s" % (user, msg))
 
         # This bot is also lua_bot
-        if DO_LUA and msg.startswith("lua>"):
+        if self.DO_LUA and msg.startswith("lua>"):
             lua_file = open("lua_in.lua", "w")
             lua_file.write(msg[4:])
             lua_file.close()
@@ -212,7 +216,7 @@ class LogBot(irc.IRCClient):
             return
 
         # Regex find and replace
-        if DO_REGEX:
+        if self.DO_REGEX:
             tokens = msg.split("/")
             if len(tokens) == 3 or len(tokens) == 4:
                 who = tokens[0]
@@ -227,16 +231,16 @@ class LogBot(irc.IRCClient):
                 self.user_to_last_msg[user] = msg
 
         # imo.im
-        if DO_IMO and msg.endswith("imo"):
+        if self.DO_IMO and msg.endswith("imo"):
             say(".im")
 
         # Respond to ompldr links other than this one with this one.
-        if DO_OMP and (len(re.findall(OMP_REGEX,msg)) >
+        if self.DO_OMP and (len(re.findall(OMP_REGEX,msg)) >
                 len(re.findall(OMP_LINK_REGEX,msg))):
             say("%s: %s" % (user, OMP_LINK))
 
         # If a message ends with a magic card name, return url to picture
-        if DO_MTG:
+        if self.DO_MTG:
             stripped_chars = charstrip(msg, max_card_name_length)
             for i in range(len(stripped_chars) - 2): # minimum of 3-character match
                 if stripped_chars[i:] in mtg_links:
@@ -244,7 +248,7 @@ class LogBot(irc.IRCClient):
                              "%s: %s" % (user, mtg_links.get(stripped_chars[i:])))
                     break # so we only say the longest one
 
-        if DO_SWOGI and len(msg) > 1:
+        if self.DO_SWOGI and len(msg) > 1:
             swogi_msg = msg[1:].replace(" ","").lower()
             by_name = False
             if swogi_msg in swogi["name_to_ids"]:
@@ -288,7 +292,7 @@ class LogBot(irc.IRCClient):
                             "http://www.sword-girls.co.kr/Img/Card/%sL.jpg" % id)
 
         # Otherwise check to see if it is a message directed at me
-        if DO_LOGLINK and msg.startswith(self.nicknames):
+        if self.DO_LOGLINK and msg.startswith(self.nicknames):
             loglink = self.logger.loglink()
             my_msg = "%s: Logs can be found at % s" % (user, loglink)
             say(my_msg)
@@ -388,7 +392,6 @@ class LogBotFactory(protocol.ClientFactory):
 
 if __name__ == '__main__':
     # Load Configuration File
-    config = yaml.load(open('config.json'))
     nickname = config["nickname"]
     nicknames = tuple(config["nicknames"])
     channel = config["channel"]
