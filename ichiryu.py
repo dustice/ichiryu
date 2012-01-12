@@ -273,12 +273,16 @@ class LogBot(irc.IRCClient):
                                 card["defense"], card["stamina"], card["limit"],
                                 card["points"],
                                 card["rarity"], card["episode"], card["ability"]))
-                        elif card["type"] == "Spell":
-                            to_say = ("%s - %s Spell - Size %s - Limit %s "
+                        elif card["type"] in ["Spell", "NPC spell"]:
+                            to_say = ("%s - %s %s - Size %s - Limit %s "
                                 "%spt %s, %s - %s" % (card["name"],
-                                    card["faction"], card["size"], card["limit"],
+                                    card["faction"], card["type"],
+                                    card["size"], card["limit"],
                                     card["points"],
                                 card["rarity"], card["episode"], card["ability"]))
+                        elif card["type"] == "Material":
+                            to_say = ("%s - %s Material" % (card["name"],
+                                card["episode"]))
                         else:
                             to_say = "card with unknown type %s and ID %s" % (
                                     card["type"], id)
