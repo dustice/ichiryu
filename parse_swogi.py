@@ -61,7 +61,8 @@ while True:
     for to_build in id_to_card.values():
         recipe = to_build["base_recipe"]
         if recipe is not None:
-            for mat,count in recipe.items():
+            for mat in recipe.keys():
+                count = recipe[mat]
                 sub_recipe = id_to_card[mat]["recipe"]
                 if sub_recipe is not None:
                     changed = True
