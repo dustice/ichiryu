@@ -29,10 +29,16 @@ from twisted.python import log
 # system imports
 import time, sys
 import re
-import pickle, json, yaml
+import json
 
 # for lua bot like functionality
 import subprocess
+
+# Load Configuration File
+config = json.load(open('config.json'))
+for k,v in config.iteritems():
+    if isinstance(v,basestring):
+        config[k] = str(v)
 
 # A function to strip non alpha-numerics from the end of a string, keep only
 # max_length characters from the end (after stripping), and make everything
@@ -58,12 +64,8 @@ OMP_LINK = "http://omploader.org/vMmhmZA"
 OMP_LINK_REGEX = re.compile("http://omploa(oade)|der\\.org/vMmhmZA($|[^a-zA-Z0-9])")
 MAX_LUA_OUTPUT = 322
 
-# MTG card dict.  if there's a pickled copy, load that instead and use it
-try:
-    mtg = pickle.load(open('mtg.pickle'))
-    max_card_name_length = mtg['max card name length']
-    mtg_links = mtg['mtg links']
-except:
+# MTG card dict.
+if config["DO_MTG"]:
     mtg_json = open("mtg_cards.json")
     big_mtg_dict = json.load(mtg_json)
     max_card_name_length = 0
@@ -78,7 +80,18 @@ except:
             if len(card_name) > max_card_name_length:
                 max_card_name_length = len(card_name)
     mtg = {'max card name length':max_card_name_length,'mtg links':mtg_links}
-    pickle.dump(mtg,open('mtg.pickle','w'))
+
+if config["DO_SWOGI"]:
+    try:
+        file = open("swogi.json")
+        swogi = json.load(file)
+        new_name_to_ids = {}
+        for k,v in swogi["name_to_ids"].iteritems():
+            new_name_to_ids[k.replace(" ","").lower()] = v
+        swogi["name_to_ids"] = new_name_to_ids
+        file.close()
+    except:
+        pass
 
 class MessageLogger:
     """
@@ -121,10 +134,16 @@ class MessageLogger:
 class LogBot(irc.IRCClient):
     """A logging IRC bot."""
 
-    # Load Configuration File
-    config = yaml.load(open('config.json'))
     nickname = config["nickname"]
     nicknames = tuple(config["nicknames"])
+    DO_LUA = config["DO_LUA"]
+    DO_REGEX = config["DO_REGEX"]
+    DO_IMO = config["DO_IMO"]
+    DO_OMP = config["DO_OMP"]
+    DO_MTG = config["DO_MTG"]
+    DO_SWOGI = config["DO_SWOGI"]
+    DO_LOGLINK = config["DO_LOGLINK"]
+    DO_PM = config["DO_PM"]
     user_to_last_msg = {}
 
     def connectionMade(self):
@@ -136,9 +155,10 @@ class LogBot(irc.IRCClient):
 
     def connectionLost(self, reason):
         irc.IRCClient.connectionLost(self, reason)
-        self.logger.log("[disconnected at %s]" %
+        if hasattr(self, "logger"):
+            self.logger.log("[disconnected at %s]" %
                         time.asctime(time.localtime(time.time())))
-        self.logger.close()
+            self.logger.close()
 
 
     # callbacks for events
@@ -156,27 +176,31 @@ class LogBot(irc.IRCClient):
         """This will get called when the bot receives a message."""
         user = user.split('!', 1)[0]
 
-        # Check to see if they're sending me a private message
-        if channel == self.nickname:
-            msg = "It isn't nice to whisper!  Play nice with the group."
-            self.msg(user, msg)
-            return
+        def say(msg):
+            self.say(channel,msg)
 
-        if channel != self.factory.channel:
+        # Check to see if they're sending me a private message
+        if channel == self.nickname and self.DO_PM:
+            def say(msg):
+                msg = str(msg)
+                while len(msg):
+                    self.msg(user, msg[:450])
+                    msg = msg[450:]
+                self.logger.log("responded to PM from %s"%user)
+        elif channel != self.factory.channel:
             return
 
         # Log messages in the channel
         self.logger.log("<%s> %s" % (user, msg))
 
         # This bot is also lua_bot
-        if msg.startswith("lua>"):
+        if self.DO_LUA and msg.startswith("lua>"):
             lua_file = open("lua_in.lua", "w")
             lua_file.write(msg[4:])
             lua_file.close()
-            lua_guy = subprocess.Popen(["./sandbox.sh"], shell=True,
+            lua_guy = subprocess.Popen(["./sandbox.sh"],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            response = lua_guy.stdout.read(MAX_LUA_OUTPUT*3)
-            err_output = lua_guy.stderr.read(MAX_LUA_OUTPUT*3)
+            response, err_output = lua_guy.communicate()
             if err_output:
                 if err_output.startswith("./sandbox.sh: line 3:"):
                     response = "Your code exceeded set CPU limits"
@@ -187,49 +211,102 @@ class LogBot(irc.IRCClient):
             if len(response) > MAX_LUA_OUTPUT:
                 response = (response[:MAX_LUA_OUTPUT-22] +
                         "... (result truncated)")
-            self.say(channel, "%s: %s" % (user, response))
+            say("%s: %s" % (user, response))
             lua_guy.kill()
             return
 
         # Regex find and replace
-        tokens = msg.split("/")
-        if len(tokens) == 3 or len(tokens) == 4:
-            who = tokens[0]
-            if who == "s":
-                who = user
-            prev_msg = self.user_to_last_msg.get(who)
-            if prev_msg:
-                new_msg = re.sub(tokens[1], tokens[2], prev_msg)
-                self.say(channel, "%s meant to say: %s" % (who, new_msg))
-                self.user_to_last_msg[who] = new_msg
-        else:
-            self.user_to_last_msg[user] = msg
+        if self.DO_REGEX:
+            tokens = msg.split("/")
+            if len(tokens) == 3 or len(tokens) == 4:
+                who = tokens[0]
+                if who == "s":
+                    who = user
+                prev_msg = self.user_to_last_msg.get(who)
+                if prev_msg:
+                    new_msg = re.sub(tokens[1], tokens[2], prev_msg)
+                    say("%s meant to say: %s" % (who, new_msg))
+                    self.user_to_last_msg[who] = new_msg
+            else:
+                self.user_to_last_msg[user] = msg
 
         # imo.im
-        if msg.endswith("imo"):
-            self.say(channel, ".im")
+        if self.DO_IMO and msg.endswith("imo"):
+            say(".im")
 
         # Respond to ompldr links other than this one with this one.
-        if len(re.findall(OMP_REGEX,msg)) > len(re.findall(OMP_LINK_REGEX,msg)):
-            self.say(channel, "%s: %s" % (user, OMP_LINK))
+        if self.DO_OMP and (len(re.findall(OMP_REGEX,msg)) >
+                len(re.findall(OMP_LINK_REGEX,msg))):
+            say("%s: %s" % (user, OMP_LINK))
 
         # If a message ends with a magic card name, return url to picture
-        stripped_chars = charstrip(msg, max_card_name_length)
-        for i in range(len(stripped_chars) - 2): # minimum of 3-character match
-            if stripped_chars[i:] in mtg_links:
-                self.say(channel,
-                         "%s: %s" % (user, mtg_links.get(stripped_chars[i:])))
-                break # so we only say the longest one
+        if self.DO_MTG:
+            stripped_chars = charstrip(msg, max_card_name_length)
+            for i in range(len(stripped_chars) - 2): # minimum of 3-character match
+                if stripped_chars[i:] in mtg_links:
+                    say(
+                             "%s: %s" % (user, mtg_links.get(stripped_chars[i:])))
+                    break # so we only say the longest one
+
+        if self.DO_SWOGI and len(msg) > 1:
+            swogi_msg = msg[1:].replace(" ","").lower()
+            by_name = False
+            if swogi_msg in swogi["name_to_ids"]:
+                ids = swogi["name_to_ids"][swogi_msg]
+                by_name = True
+            else:
+                ids = [swogi_msg]
+            if msg.startswith("!"):
+                for id in ids:
+                    if id in swogi["id_to_card"]:
+                        card = swogi["id_to_card"][id]
+                        if card["type"] == "Character":
+                            to_say = ("%s - %s Character - %s Life - Limit %s %spt "
+                                "%s, %s - %s" % (card["name"], card["faction"],
+                                card["life"], card["limit"],
+                                card["points"], card["rarity"],
+                                card["episode"], card["ability"]))
+                        elif card["type"] == "Follower":
+                            to_say = ("%s - %s Follower - Size %s, %s/%s/%s - "
+                                "Limit %s %spt %s, %s - %s" % (card["name"],
+                                card["faction"], card["size"], card["attack"],
+                                card["defense"], card["stamina"], card["limit"],
+                                card["points"],
+                                card["rarity"], card["episode"], card["ability"]))
+                        elif card["type"] in ["Spell", "NPC spell"]:
+                            to_say = ("%s - %s %s - Size %s - Limit %s "
+                                "%spt %s, %s - %s" % (card["name"],
+                                    card["faction"], card["type"],
+                                    card["size"], card["limit"],
+                                    card["points"],
+                                card["rarity"], card["episode"], card["ability"]))
+                        elif card["type"] == "Material":
+                            to_say = ("%s - %s Material" % (card["name"],
+                                card["episode"]))
+                        else:
+                            to_say = "card with unknown type %s and ID %s" % (
+                                    card["type"], id)
+                        say(to_say)
+                    elif by_name:
+                        say("unknown card with ID %s" % id)
+            elif msg.startswith("@"):
+                for id in ids:
+                    if id in swogi["id_to_card"]:
+                        say(
+                            "http://www.sword-girls.co.kr/Img/Card/%sL.jpg" % id)
 
         # Otherwise check to see if it is a message directed at me
-        if msg.startswith(self.nicknames):
+        if self.DO_LOGLINK and msg.startswith(self.nicknames):
             loglink = self.logger.loglink()
             my_msg = "%s: Logs can be found at % s" % (user, loglink)
-            self.say(channel, my_msg)
+            say(my_msg)
 
     def say(self, channel, msg):
-        self.msg(channel, msg)
+        msg = str(msg)
         self.logger.log("<%s> %s" % (self.nickname, msg))
+        while len(msg):
+            self.msg(channel, msg[:450])
+            msg = msg[450:]
 
     def action(self, user, channel, msg):
         """This will get called when the bot sees someone do an action."""
@@ -279,8 +356,8 @@ class LogBot(irc.IRCClient):
         kicked = params[1]
         message = params[-1]
         self.logger.log(
-            "%s (WTB WORKING WHOIS IN TWISTED) was kicked by %s (%s) for
-            reason [%s]" % (kicked, kicker, prefix, message))
+            "%s (WTB WORKING WHOIS IN TWISTED) was kicked by %s (%s) for"
+            "reason [%s]" % (kicked, kicker, prefix, message))
 
     # For fun, override the method that determines how a nickname is changed on
     # collisions. The default method appends an underscore.
@@ -319,7 +396,6 @@ class LogBotFactory(protocol.ClientFactory):
 
 if __name__ == '__main__':
     # Load Configuration File
-    config = yaml.load(open('config.json'))
     nickname = config["nickname"]
     nicknames = tuple(config["nicknames"])
     channel = config["channel"]
