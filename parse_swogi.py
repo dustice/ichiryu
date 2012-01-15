@@ -48,13 +48,13 @@ for line in open("recipes.txt"):
     entries = [s.strip() for s in line.split(' ')]
     if len(entries) == 1:
         if idd is not None:
-            id_to_card[idd]["recipe"] = recipe
+            id_to_card[idd]["recipe"] = Counter(recipe)
             id_to_card[idd]["base_recipe"] = Counter(recipe)
         idd = entries[0][1:]
         recipe = {}
     else:
         recipe[entries[0]] = int(entries[1][1:])
-id_to_card[idd]["recipe"] = recipe
+id_to_card[idd]["recipe"] = Counter(recipe)
 
 while True:
     changed = False
@@ -62,7 +62,7 @@ while True:
         recipe = to_build["base_recipe"]
         if recipe is not None:
             for mat,count in recipe.items():
-                sub_recipe = id_to_card[mat]["base_recipe"]
+                sub_recipe = id_to_card[mat]["recipe"]
                 if sub_recipe is not None:
                     changed = True
                     recipe += sub_recipe * count
