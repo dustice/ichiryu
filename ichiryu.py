@@ -248,8 +248,15 @@ class LogBot(irc.IRCClient):
                              "%s: %s" % (user, mtg_links.get(stripped_chars[i:])))
                     break # so we only say the longest one
 
-        if self.DO_SWOGI and len(msg) > 1:
-            swogi_msg = msg[1:].replace(" ","").lower()
+        if self.DO_SWOGI and len(msg) > 2:
+            recipe = "recipe"
+            pr_recipe = "Recipe"
+            if msg.startswith("##"):
+                recipe = "base_recipe"
+                pr_recipe = "Base Recipe"
+                swogi_msg = msg[2:].replace(" ","").lower()
+            else:
+                swogi_msg = msg[1:].replace(" ","").lower()
             by_name = False
             if swogi_msg in swogi["name_to_ids"]:
                 ids = swogi["name_to_ids"][swogi_msg]
@@ -261,39 +268,51 @@ class LogBot(irc.IRCClient):
                     if id in swogi["id_to_card"]:
                         card = swogi["id_to_card"][id]
                         if card["type"] == "Character":
-                            to_say = ("%s - %s Character - %s Life - Limit %s %spt "
+                            say("%s - %s Character - %s Life - Limit %s %spt "
                                 "%s, %s - %s" % (card["name"], card["faction"],
                                 card["life"], card["limit"],
                                 card["points"], card["rarity"],
                                 card["episode"], card["ability"]))
-                        elif card["type"] == "Follower":
-                            to_say = ("%s - %s Follower - Size %s, %s/%s/%s - "
+                        elif "follower" in card["type"].lower():
+                            say("%s - %s %s - Size %s, %s/%s/%s - "
                                 "Limit %s %spt %s, %s - %s" % (card["name"],
-                                card["faction"], card["size"], card["attack"],
-                                card["defense"], card["stamina"], card["limit"],
-                                card["points"],
+                                card["faction"], card["type"], card["size"],
+                                card["attack"], card["defense"], card["stamina"],
+                                card["limit"], card["points"],
                                 card["rarity"], card["episode"], card["ability"]))
-                        elif card["type"] in ["Spell", "NPC spell"]:
-                            to_say = ("%s - %s %s - Size %s - Limit %s "
+                        elif "spell" in card["type"].lower():
+                            say("%s - %s %s - Size %s - Limit %s "
                                 "%spt %s, %s - %s" % (card["name"],
                                     card["faction"], card["type"],
                                     card["size"], card["limit"],
                                     card["points"],
                                 card["rarity"], card["episode"], card["ability"]))
                         elif card["type"] == "Material":
-                            to_say = ("%s - %s Material" % (card["name"],
-                                card["episode"]))
+                            try:
+                                say("%s - %s Material - %s" % (card["name"],
+                                    card["episode"], card["location"]))
+                            except:
+                                say("%s - %s Material" % (card["name"],
+                                    card["episode"]))
                         else:
-                            to_say = "card with unknown type %s and ID %s" % (
-                                    card["type"], id)
-                        say(to_say)
+                            say("card with unknown type %s and ID %s" % (
+                                    card["type"], id))
                     elif by_name:
                         say("unknown card with ID %s" % id)
             elif msg.startswith("@"):
                 for id in ids:
                     if id in swogi["id_to_card"]:
-                        say(
-                            "http://www.sword-girls.co.kr/Img/Card/%sL.jpg" % id)
+                        say("http://www.sword-girls.co.kr/Img/Card/%sL.jpg" % id)
+            elif msg.startswith("#"):
+                for id in ids:
+                    if id in swogi["id_to_card"]:
+                        card = swogi["id_to_card"][id]
+                        if card[recipe]:
+                            to_say = "%s for %s - "%(pr_recipe, card["name"])
+                            for mat_id in sorted(card[recipe].keys()):
+                                to_say += "%sx %s, "%(card[recipe][mat_id],
+                                        swogi["id_to_card"][mat_id]["name"])
+                            say(to_say[:-2])
 
         # Otherwise check to see if it is a message directed at me
         if self.DO_LOGLINK and msg.startswith(self.nicknames):
