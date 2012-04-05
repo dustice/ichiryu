@@ -253,6 +253,10 @@ class LogBot(irc.IRCClient):
                 self.say(channel,
                          "%s: %s" % (user, mtg_links.get(stripped_chars[i:])))
                 break # so we only say the longest one
+        # Issue #15: the "ow" exception
+        if re.search(r'(^|[^a-zA-Z0-9])[oO][wW][^a-zA-Z0-9]*$', msg) != None:
+            self.say(channel,
+                     "%s: %s" % (user, mtg_links.get("ow")))
 
         # Ship it.
         if charstrip(msg).endswith("ship it"):
